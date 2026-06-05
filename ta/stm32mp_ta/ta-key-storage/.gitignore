@@ -1,0 +1,15 @@
+# Compiled files
+*.o
+*.elf
+*.ta
+*.dmp
+*.map
+*.stripped.elf
+*.lds
+dyn_list
+compile_commands.json
+
+# Build artifacts
+.*.cmd
+.*.d
+compile_commands.json

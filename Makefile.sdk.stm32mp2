@@ -1,0 +1,65 @@
+# ============================================================
+# Makefile.sdk.stm32mp2 : Mohamed Tabkioui
+# Flash OP-TEE FIP on STM32MP257F-EV1
+
+# How to use
+# # Flash complet
+#                       make -f Makefile.sdk.stm32mp2 flash IP=10.48.104.xxx
+
+# # Après reboot, vider le Secure Storage
+#                       make -f Makefile.sdk.stm32mp2 clean-tee IP=10.48.104.xxx
+# ============================================================
+
+FIPTOOL ?= /opt/st/stm32mp2/5.0.15-openstlinux-6.6-yocto-scarthgap-mpu-v26.02.18/sysroots/x86_64-ostl_sdk-linux/usr/bin/fiptool
+FIP     ?= /local/home/tabkioum/STM32MPU_workspace/Starter-Package/stm32mp2-openstlinux-6.6-yocto-scarthgap-mpu-v26.02.18/images/stm32mp2/fip/fip-stm32mp257f-ev1-ca35tdcid-ostl-optee-emmc.bin
+OPTEE_OUT ?= out/arm-plat-stm32mp2/core
+IP      ?= 10.48.104.102
+
+TEE_HEADER   = $(OPTEE_OUT)/tee-header_v2.bin
+TEE_PAGER    = $(OPTEE_OUT)/tee-pager_v2.bin
+TEE_PAGEABLE = $(OPTEE_OUT)/tee-pageable_v2.bin
+
+FIP_REMOTE = /home/root/fip-stm32mp257f-ev1-ca35tdcid-ostl-optee-emmc.bin
+
+.PHONY: fip-update scp-fip flash clean-tee help
+
+help:
+	@echo "Available targets:"
+	@echo "  fip-update  : update FIP with new OP-TEE binaries"
+	@echo "  scp-fip     : copy FIP to target"
+	@echo "  flash       : fip-update + scp-fip + flash on target + reboot"
+	@echo "  clean-tee   : clean /var/lib/tee on target"
+	@echo ""
+	@echo "Variables:"
+	@echo "  IP=$(IP)"
+	@echo "  FIP=$(FIP)"
+
+fip-update:
+	@echo "==> Updating FIP with new OP-TEE binaries..."
+	$(FIPTOOL) update \
+		--tos-fw      $(TEE_HEADER) \
+		--tos-fw-extra1 $(TEE_PAGER) \
+		--tos-fw-extra2 $(TEE_PAGEABLE) \
+		$(FIP)
+	@echo "==> FIP updated: $(FIP)"
+
+scp-fip:
+	@echo "==> Copying FIP to target $(IP)..."
+	scp $(FIP) root@$(IP):~/
+	@echo "==> FIP copied."
+
+flash: fip-update scp-fip
+	@echo "==> Detecting FIP partition on target..."
+	ssh root@$(IP) '\
+		FIP_PART=$$(sgdisk -p /dev/mmcblk0 | grep "fip-a" | awk "{print \$$1}"); \
+		FIP_BACK=$$(sgdisk -p /dev/mmcblk0 | grep "fip-b" | awk "{print \$$1}"); \
+		echo "FIP-A on partition: $$FIP_PART"; \
+		echo "FIP-B on partition: $$FIP_BACK"; \
+		dd if=$(FIP_REMOTE) of=/dev/mmcblk0p$$FIP_PART bs=1M conv=fdatasync; \
+		dd if=$(FIP_REMOTE) of=/dev/mmcblk0p$$FIP_BACK bs=1M conv=fdatasync; \
+		sync && reboot'
+
+clean-tee:
+	@echo "==> Cleaning Secure Storage on target..."
+	ssh root@$(IP) "rm -f /var/lib/tee/* && systemctl restart tee-supplicant"
+	@echo "==> Done."
