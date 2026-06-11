@@ -1,13 +1,19 @@
 # ============================================================
-# Makefile.sdk.stm32mp2 : Mohamed Tabkioui
-# Flash OP-TEE FIP on STM32MP257F-EV1
+# Compile and Flash OP-TEE FIP on STM32MP257F-EV1
+#
+# Usage:
+#   make clean
+#   make optee
+#   make fip-update
+#   make scp-fip IP=$IP
+#   make clean-tee IP=10.xx.xxx.xxx
 
-# How to use
-# # Flash complet
-#                       make -f Makefile.sdk.stm32mp2 flash IP=10.48.104.xxx
+# Board :
+# ls -l /dev/disk/by-partlabel/
 
-# # Après reboot, vider le Secure Storage
-#                       make -f Makefile.sdk.stm32mp2 clean-tee IP=10.48.104.xxx
+# dd if=/home/root/fip-stm32mp257f-ev1-ca35tdcid-ostl-optee-emmc.bin \
+#    of=/dev/disk/by-partlabel/fip-a bs=1M conv=fdatasync && \
+#    sync && reboot
 # ============================================================
 
 FIPTOOL ?= /opt/st/stm32mp2/5.0.15-openstlinux-6.6-yocto-scarthgap-mpu-v26.02.18/sysroots/x86_64-ostl_sdk-linux/usr/bin/fiptool
@@ -15,24 +21,53 @@ FIP     ?= /local/home/tabkioum/STM32MPU_workspace/Starter-Package/stm32mp2-open
 OPTEE_OUT ?= out/arm-plat-stm32mp2/core
 IP      ?= 10.48.104.102
 
+CROSS_COMPILE_CORE = aarch64-ostl-linux-
+SYSROOT = /opt/st/stm32mp2/5.0.15-openstlinux-6.6-yocto-scarthgap-mpu-v26.02.18/sysroots/cortexa35-ostl-linux
+DTS     = stm32mp257f-ev1-ca35tdcid-ostl.dts
+EXT_DTS = core/arch/arm/dts/external-dt/stm32mp2/a35-td/optee
+
 TEE_HEADER   = $(OPTEE_OUT)/tee-header_v2.bin
 TEE_PAGER    = $(OPTEE_OUT)/tee-pager_v2.bin
 TEE_PAGEABLE = $(OPTEE_OUT)/tee-pageable_v2.bin
 
-FIP_REMOTE = /home/root/fip-stm32mp257f-ev1-ca35tdcid-ostl-optee-emmc.bin
+FIP_REMOTE = /home/root/$(notdir $(FIP))
 
-.PHONY: fip-update scp-fip flash clean-tee help
+.PHONY: optee clean fip-update scp-fip clean-tee help
 
 help:
 	@echo "Available targets:"
-	@echo "  fip-update  : update FIP with new OP-TEE binaries"
-	@echo "  scp-fip     : copy FIP to target"
-	@echo "  flash       : fip-update + scp-fip + flash on target + reboot"
-	@echo "  clean-tee   : clean /var/lib/tee on target"
+	@echo "  optee      : compile OP-TEE"
+	@echo "  clean      : clean OP-TEE build"
+	@echo "  fip-update : update FIP with new OP-TEE binaries"
+	@echo "  scp-fip    : copy FIP to target"
+	@echo "  clean-tee  : clean /var/lib/tee on target"
 	@echo ""
 	@echo "Variables:"
 	@echo "  IP=$(IP)"
 	@echo "  FIP=$(FIP)"
+
+optee:
+	$(MAKE) \
+		ARCH=arm \
+		PLATFORM=stm32mp2 \
+		CROSS_COMPILE_core=$(CROSS_COMPILE_CORE) \
+		CROSS_COMPILE_ta_arm64=$(CROSS_COMPILE_CORE) \
+		CFLAGS64=--sysroot=$(SYSROOT) \
+		LIBGCC_LOCATE_CFLAGS=--sysroot=$(SYSROOT) \
+		CFG_TEE_CORE_LOG_LEVEL=2 \
+		CFG_ARM64_core=y \
+		LDFLAGS="" \
+		CFG_EMBED_DTB_SOURCE_FILE=$(DTS) \
+		CFG_EXT_DTS=$(EXT_DTS) \
+		all
+
+clean:
+	$(MAKE) \
+		ARCH=arm \
+		PLATFORM=stm32mp2 \
+		CFG_ARM64_core=y \
+		LDFLAGS="" \
+		clean
 
 fip-update:
 	@echo "==> Updating FIP with new OP-TEE binaries..."
@@ -47,17 +82,6 @@ scp-fip:
 	@echo "==> Copying FIP to target $(IP)..."
 	scp $(FIP) root@$(IP):~/
 	@echo "==> FIP copied."
-
-flash: fip-update scp-fip
-	@echo "==> Detecting FIP partition on target..."
-	ssh root@$(IP) '\
-		FIP_PART=$$(sgdisk -p /dev/mmcblk0 | grep "fip-a" | awk "{print \$$1}"); \
-		FIP_BACK=$$(sgdisk -p /dev/mmcblk0 | grep "fip-b" | awk "{print \$$1}"); \
-		echo "FIP-A on partition: $$FIP_PART"; \
-		echo "FIP-B on partition: $$FIP_BACK"; \
-		dd if=$(FIP_REMOTE) of=/dev/mmcblk0p$$FIP_PART bs=1M conv=fdatasync; \
-		dd if=$(FIP_REMOTE) of=/dev/mmcblk0p$$FIP_BACK bs=1M conv=fdatasync; \
-		sync && reboot'
 
 clean-tee:
 	@echo "==> Cleaning Secure Storage on target..."

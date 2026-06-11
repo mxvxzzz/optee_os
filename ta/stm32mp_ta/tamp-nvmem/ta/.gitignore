@@ -1,0 +1,10 @@
+*.o
+*.elf
+*.dmp
+*.map
+*.ta
+*.stripped.elf
+dyn_list
+ta.lds
+.*.cmd
+.*.d

@@ -55,6 +55,7 @@ srcs-$(CFG_STM32_RNG) += stm32_rng.c
 srcs-$(CFG_STM32_RTC) += stm32_rtc.c
 srcs-$(CFG_STM32_SHARED_IO) += stm32_shared_io.c
 srcs-$(CFG_STM32_TAMP) += stm32_tamp.c
+srcs-$(CFG_STM32_TAMP_NVMEM) += stm32_tamp_nvmem.c
 srcs-$(CFG_STM32_UART) += stm32_uart.c
 srcs-$(CFG_STM32MP_PROVISIONING) += stm32mp_provisioning.c
 srcs-$(CFG_STPMIC1) += stpmic1.c
